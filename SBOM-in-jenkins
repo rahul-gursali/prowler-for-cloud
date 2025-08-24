@@ -1,0 +1,57 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "myapp:latest"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/example/myapp.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${IMAGE_NAME} ."
+                }
+            }
+        }
+
+        stage('Trivy Vulnerability Scan') {
+            steps {
+                script {
+                    sh """
+                    trivy image --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_NAME} || true
+                    """
+                }
+            }
+        }
+
+        stage('Generate SBOM') {
+            steps {
+                script {
+                    // Generate SBOM in CycloneDX JSON format
+                    sh """
+                    trivy image --format cyclonedx --output sbom-${BUILD_NUMBER}.json ${IMAGE_NAME}
+                    """
+                }
+            }
+        }
+
+        stage('Archive Reports') {
+            steps {
+                archiveArtifacts artifacts: 'sbom-*.json', fingerprint: true
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up..."
+            sh "docker rmi ${IMAGE_NAME} || true"
+        }
+    }
+}
