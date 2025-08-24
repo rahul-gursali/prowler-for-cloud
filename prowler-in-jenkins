@@ -1,0 +1,42 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = "us-east-1"
+        AWS_PROFILE = "default"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/prowler.git'
+            }
+        }
+
+        stage('Run Prowler Scan') {
+            steps {
+                sh '''
+                    echo "Running Prowler security scan..."
+                    ./prowler -M json > prowler-report.json
+                '''
+            }
+        }
+
+        stage('Archive Report') {
+            steps {
+                archiveArtifacts artifacts: 'prowler-report.json', fingerprint: true
+            }
+        }
+
+        stage('Evaluate Security Results') {
+            steps {
+                script {
+                    def report = readFile('prowler-report.json')
+                    if (report.contains('"FAIL"')) {
+                        error "Prowler scan failed due to security findings!"
+                    }
+                }
+            }
+        }
+    }
+}
